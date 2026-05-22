@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <Adafruit_PN532.h>
 #include <ArduinoJson.h>
+#include <WiFiClientSecure.h>
 
 // WIFI
 const char* ssid = "IPP_Guests";
@@ -16,6 +17,11 @@ const char* serverUrl = "https://coffee-counter-292q.onrender.com/coffee";
 #define SCL_PIN 22
 
 Adafruit_PN532 nfc(-1, -1);
+
+String lastUID = "";
+unsigned long lastScanTime = 0;
+
+const unsigned long scanCooldown = 10000; // 10 seconds
 
 void setup() {
 
@@ -61,90 +67,181 @@ void loop() {
   uint8_t uid[] = {0,0,0,0,0,0,0};
   uint8_t uidLength;
 
+  // Try reading NFC card
   success = nfc.readPassiveTargetID(
     PN532_MIFARE_ISO14443A,
     uid,
-    &uidLength
+    &uidLength,
+    100  // timeout in ms
   );
 
-  if (success) {
-
-    // Build UID string
-    String uidString = "";
-
-    for (uint8_t i = 0; i < uidLength; i++) {
-
-      if (uid[i] < 0x10) {
-        uidString += "0";
-      }
-
-      uidString += String(uid[i], HEX);
-    }
-
-    uidString.toUpperCase();
-
-    Serial.print("UID detected: ");
-    Serial.println(uidString);
-
-    // Send HTTP POST
-    if (WiFi.status() == WL_CONNECTED) {
-
-      HTTPClient http;
-
-      http.begin(serverUrl);
-
-      http.addHeader("Content-Type", "application/json");
-
-      // JSON payload
-      String jsonPayload = "{\"uid\":\"" + uidString + "\"}";
-
-      Serial.println("Sending POST...");
-      Serial.println(jsonPayload);
-
-      int httpResponseCode = http.POST(jsonPayload);
-
-      Serial.print("HTTP Response code: ");
-      Serial.println(httpResponseCode);
-
-      if (httpResponseCode > 0) {
-
-        String response = http.getString();
-
-        Serial.println("Server response:");
-        Serial.println(response);
-
-        // Parse JSON
-        DynamicJsonDocument doc(1024);
-
-        deserializeJson(doc, response);
-
-        String status = doc["status"];
-
-        if (status == "ok") {
-
-          String name = doc["name"];
-          int count = doc["coffee_count"];
-
-          Serial.println("USER FOUND");
-          Serial.println(name);
-          Serial.println(count);
-        }
-
-        else if (status == "new_user") {
-
-          Serial.println("NEW USER CREATED");
-        }
-      }
-
-      else {
-
-        Serial.print("HTTP Error: ");
-        Serial.println(httpResponseCode);
-      }
-
-      http.end();
-    }
-
-    delay(3000);
+  // No card detected
+  if (!success) {
+    delay(50);
+    return;
   }
+
+  // Build UID string
+  String uidString = "";
+
+  for (uint8_t i = 0; i < uidLength; i++) {
+
+    if (uid[i] < 0x10) {
+      uidString += "0";
+    }
+
+    uidString += String(uid[i], HEX);
+  }
+
+  uidString.toUpperCase();
+
+  unsigned long currentTime = millis();
+
+  // Ignore duplicate scan within cooldown
+  if (uidString == lastUID &&
+      currentTime - lastScanTime < scanCooldown) {
+
+    Serial.println("Duplicate scan ignored");
+
+    delay(200);
+
+    return;
+  }
+
+
+  Serial.println();
+  Serial.println("======================");
+  Serial.print("UID detected: ");
+  Serial.println(uidString);
+
+  // Check WiFi
+  if (WiFi.status() != WL_CONNECTED) {
+
+    Serial.println("WiFi disconnected");
+    Serial.println("Reconnecting...");
+
+    WiFi.begin(ssid, password);
+
+    int retries = 0;
+
+    while (WiFi.status() != WL_CONNECTED && retries < 20) {
+      delay(500);
+      Serial.print(".");
+      retries++;
+    }
+
+    Serial.println();
+
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi reconnect failed");
+      return;
+    }
+
+    Serial.println("WiFi reconnected");
+  }
+
+  // HTTPS client
+  WiFiClientSecure client;
+
+  client.setInsecure();
+
+  client.setTimeout(15000);
+
+  HTTPClient http;
+
+  http.setTimeout(15000);
+
+  http.useHTTP10(true);
+
+  Serial.println("Connecting to server...");
+
+  if (!http.begin(client, serverUrl)) {
+
+    Serial.println("HTTP begin failed");
+    return;
+  }
+
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Connection", "close");
+
+  String jsonPayload = "{\"uid\":\"" + uidString + "\"}";
+
+  Serial.println("Sending POST...");
+  Serial.println(jsonPayload);
+
+  int httpResponseCode = http.POST(jsonPayload);
+
+  Serial.print("HTTP Response code: ");
+  Serial.println(httpResponseCode);
+
+  if (httpResponseCode > 0) {
+
+    String response = http.getString();
+
+    Serial.println("Server response:");
+    Serial.println(response);
+
+    DynamicJsonDocument doc(1024);
+
+    DeserializationError error = deserializeJson(doc, response);
+
+    if (error) {
+
+      Serial.println("JSON parse failed");
+
+    } else {
+
+      String status = doc["status"];
+
+      if (status == "ok") {
+
+        String name = doc["name"];
+        int count = doc["coffee_count"];
+
+        Serial.println();
+        Serial.println("USER FOUND");
+        Serial.print("Name: ");
+        Serial.println(name);
+
+        Serial.print("Coffee count: ");
+        Serial.println(count);
+      }
+
+      else if (status == "new_user") {
+
+        Serial.println();
+        Serial.println("NEW USER CREATED");
+      }
+    }
+
+  } else {
+
+    Serial.print("HTTP Error: ");
+    Serial.println(httpResponseCode);
+  }
+
+  http.end();
+
+  client.stop();
+
+  lastUID = uidString;
+  lastScanTime = millis();
+
+  Serial.println("Remove NFC tag...");
+
+  // WAIT UNTIL CARD REMOVED
+  while (nfc.readPassiveTargetID(
+      PN532_MIFARE_ISO14443A,
+      uid,
+      &uidLength,
+      100
+    )) {
+
+    delay(100);
+  }
+
+  Serial.println("Ready for next scan");
+  Serial.println("======================");
+
+  delay(500);
 }
