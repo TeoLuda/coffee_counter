@@ -1,9 +1,27 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Wire.h>
+
+TwoWire OLED_I2C = TwoWire(0);
+TwoWire NFC_I2C = TwoWire(1);
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+
+
 #include <Adafruit_PN532.h>
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
+
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &OLED_I2C,
+  -1
+);
 
 // WIFI
 const char* ssid = "IPP_Guests";
@@ -16,7 +34,7 @@ const char* serverUrl = "https://coffee-counter-292q.onrender.com/coffee";
 #define SDA_PIN 21
 #define SCL_PIN 22
 
-Adafruit_PN532 nfc(-1, -1);
+Adafruit_PN532 nfc(-1, -1, &NFC_I2C);
 
 String lastUID = "";
 unsigned long lastScanTime = 0;
@@ -28,7 +46,25 @@ void setup() {
   Serial.begin(115200);
 
   // I2C
-  Wire.begin(SDA_PIN, SCL_PIN);
+  NFC_I2C.begin(21, 22);
+  OLED_I2C.begin(18, 19);
+
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+
+    Serial.println("OLED not found");
+
+    while(1);
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setCursor(0,0);
+  display.println("Coffee Counter");
+  display.println("Booting...");
+
+  display.display();
 
   // NFC init
   nfc.begin();
@@ -57,6 +93,24 @@ void setup() {
   Serial.println();
   Serial.println("WiFi connected");
   Serial.println(WiFi.localIP());
+
+  display.clearDisplay();
+
+  display.setCursor(0,0);
+  display.println("WiFi connected");
+  display.println(WiFi.localIP());
+
+  display.display();
+
+  delay(2000);
+
+  display.clearDisplay();
+
+  display.setCursor(0,0);
+  display.println("Ready for");
+  display.println("NFC scan");
+
+  display.display();
 
   Serial.println("Ready for NFC scan");
 }
@@ -114,6 +168,15 @@ void loop() {
   Serial.print("UID detected: ");
   Serial.println(uidString);
 
+  display.clearDisplay();
+
+  display.setCursor(0,0);
+  display.println("Card detected");
+  display.println(uidString);
+
+  display.display();
+  delay(2000);
+
   // Check WiFi
   if (WiFi.status() != WL_CONNECTED) {
 
@@ -154,6 +217,14 @@ void loop() {
   http.useHTTP10(true);
 
   Serial.println("Connecting to server...");
+
+  display.clearDisplay();
+
+  display.setCursor(0,0);
+  display.println("Connecting...");
+  display.println("Please wait");
+
+  display.display();
 
   if (!http.begin(client, serverUrl)) {
 
@@ -205,9 +276,32 @@ void loop() {
 
         Serial.print("Coffee count: ");
         Serial.println(count);
+
+        display.clearDisplay();
+
+        display.setTextSize(2);
+
+        display.setCursor(0,0);
+        display.println(name);
+
+        display.setTextSize(1);
+
+        display.print("Coffees: ");
+        display.println(count);
+
+        display.display();
+
       }
 
       else if (status == "new_user") {
+
+        display.clearDisplay();
+
+        display.setCursor(0,0);
+        display.println("Unknown user");
+        display.println("Registered");
+
+        display.display();
 
         Serial.println();
         Serial.println("NEW USER CREATED");
@@ -218,6 +312,14 @@ void loop() {
 
     Serial.print("HTTP Error: ");
     Serial.println(httpResponseCode);
+
+    display.clearDisplay();
+
+    display.setCursor(0,0);
+    display.println("HTTP Error");
+    display.println(httpResponseCode);
+
+    display.display();
   }
 
   http.end();
@@ -243,5 +345,13 @@ void loop() {
   Serial.println("Ready for next scan");
   Serial.println("======================");
 
-  delay(500);
+  delay(5000);
+
+  display.clearDisplay();
+
+  display.setCursor(0,0);
+  display.println("Ready for");
+  display.println("NFC scan");
+
+  display.display();
 }
