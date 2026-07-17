@@ -255,10 +255,14 @@ async function requestPayment(id, name){
     if(data.status=="ok"){
 
         alert(
-            "Payment request created!\n\n" +
-            "Token:\n\n" +
-            data.token
+            "Payment confirmation email sent!"
         );
+
+    }
+
+    if(data.status=="email_error"){
+
+        alert("Unable to send email.");
 
     }
 

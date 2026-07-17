@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, render_template
 from supabase import create_client
 
+import requests
+
 app = Flask(__name__)
 
 SUPABASE_URL = "https://vybtsrmxrhqlplpaotkq.supabase.co"
@@ -18,6 +20,12 @@ COFFEE_PRICE = 0.50
 TOKEN_EXPIRATION_HOURS = 24
 
 PENDING_FILE = "pending_payments.json"
+
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL")
+SENDER_NAME = os.getenv("SENDER_NAME")
+
+BASE_URL = "https://coffee-counter-292q.onrender.com"
 
 def load_pending():
 
@@ -32,6 +40,104 @@ def save_pending(data):
 
     with open(PENDING_FILE, "w") as f:
         json.dump(data, f, indent=4)
+
+def send_payment_email(user, token):
+
+    confirmation_link = f"{BASE_URL}/confirm/{token}"
+
+    amount = user["coffee_count"] * COFFEE_PRICE
+
+    payload = {
+
+        "sender": {
+            "name": SENDER_NAME,
+            "email": SENDER_EMAIL
+        },
+
+        "to": [{
+            "email": user["email"],
+            "name": user["name"]
+        }],
+
+        "subject": "IPP Coffee Counter Payment",
+
+        "htmlContent": f"""
+
+<h2>☕ IPP Coffee Counter</h2>
+
+<p>Hello <b>{user["name"]}</b>,</p>
+
+<p>
+You requested to mark your coffee payment as completed.
+</p>
+
+<p>
+
+<b>Coffees:</b> {user["coffee_count"]}<br>
+<b>Amount:</b> €{amount:.2f}
+
+</p>
+
+<p>
+
+Please send the payment to:
+
+</p>
+
+<p>
+
+<b>https://paypal.me/Teoluda</b>
+
+</p>
+
+<p>
+
+<a href="{confirmation_link}"
+style="
+background:#8B5A2B;
+color:white;
+padding:12px 24px;
+text-decoration:none;
+border-radius:8px;
+">
+
+Confirm Payment
+
+</a>
+
+</p>
+
+<p>
+
+This link expires after 24 hours.
+
+</p>
+
+"""
+
+    }
+
+    headers = {
+
+        "accept":"application/json",
+
+        "api-key":BREVO_API_KEY,
+
+        "content-type":"application/json"
+
+    }
+
+    r = requests.post(
+
+        "https://api.brevo.com/v3/smtp/email",
+
+        headers=headers,
+
+        json=payload
+
+    )
+
+    return r.status_code == 201
 
 @app.route("/request_payment/<int:user_id>", methods=["POST"])
 def request_payment(user_id):
@@ -63,15 +169,19 @@ def request_payment(user_id):
 
     save_pending(pending)
 
-    return jsonify({
+    success = send_payment_email(user, token)
 
-        "status":"ok",
+    if success:
 
-        "token":token,
+        return jsonify({
+            "status":"ok"
+        })
 
-        "email":user["email"]
+    else:
 
-    })
+        return jsonify({
+            "status":"email_error"
+        })
 
 @app.route("/")
 def dashboard():
