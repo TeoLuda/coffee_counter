@@ -31,7 +31,7 @@ def dashboard():
         "index.html",
         users=users,
         coffee_price=COFFEE_PRICE,
-        paypal_link="https://paypal.me/YOURPAYPAL"
+        paypal_link="https://paypal.me/Teoluda"
     )
 
 @app.route("/coffee", methods=["POST"])
