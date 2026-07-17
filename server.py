@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from supabase import create_client
 
 app = Flask(__name__)
@@ -8,7 +8,31 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+COFFEE_PRICE = 0.50
 
+
+@app.route("/")
+def dashboard():
+
+    response = (
+        supabase
+        .table("users")
+        .select("*")
+        .order("name")
+        .execute()
+    )
+
+    users = response.data
+
+    for user in users:
+        user["amount"] = round(user["coffee_count"] * COFFEE_PRICE, 2)
+
+    return render_template(
+        "index.html",
+        users=users,
+        coffee_price=COFFEE_PRICE,
+        paypal_link="https://paypal.me/YOURPAYPAL"
+    )
 
 @app.route("/coffee", methods=["POST"])
 def coffee():
