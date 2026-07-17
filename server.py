@@ -1,3 +1,8 @@
+import os
+import json
+import secrets
+from datetime import datetime, timedelta
+
 from flask import Flask, request, jsonify, render_template
 from supabase import create_client
 
@@ -10,6 +15,63 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 COFFEE_PRICE = 0.50
 
+TOKEN_EXPIRATION_HOURS = 24
+
+PENDING_FILE = "pending_payments.json"
+
+def load_pending():
+
+    if not os.path.exists(PENDING_FILE):
+        return {}
+
+    with open(PENDING_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_pending(data):
+
+    with open(PENDING_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+@app.route("/request_payment/<int:user_id>", methods=["POST"])
+def request_payment(user_id):
+
+    response = (
+        supabase
+        .table("users")
+        .select("*")
+        .eq("id", user_id)
+        .execute()
+    )
+
+    if len(response.data) == 0:
+        return jsonify({"status":"error"})
+
+    user = response.data[0]
+
+    token = secrets.token_urlsafe(32)
+
+    pending = load_pending()
+
+    pending[token] = {
+
+        "user_id": user_id,
+
+        "created_at": datetime.utcnow().isoformat()
+
+    }
+
+    save_pending(pending)
+
+    return jsonify({
+
+        "status":"ok",
+
+        "token":token,
+
+        "email":user["email"]
+
+    })
 
 @app.route("/")
 def dashboard():

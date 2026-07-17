@@ -184,9 +184,14 @@ Current Coffee Counts
 
 <td class="text-center">
 
-<button class="btn btn-coffee">
+<button
+    class="btn btn-coffee"
+    onclick="requestPayment(
+        {{ user.id }},
+        '{{ user.name }}'
+    )">
 
-Mark as paid
+    Mark as paid
 
 </button>
 
@@ -225,6 +230,47 @@ No payments yet.
 </div>
 
 </div>
+
+<script>
+
+async function requestPayment(id, name){
+
+    if(!confirm(
+        "Send a payment confirmation email to " +
+        name +
+        "?"
+    )){
+        return;
+    }
+
+    const response = await fetch(
+        "/request_payment/" + id,
+        {
+            method:"POST"
+        }
+    );
+
+    const data = await response.json();
+
+    if(data.status=="ok"){
+
+        alert(
+            "Payment request created!\n\n" +
+            "Token:\n\n" +
+            data.token
+        );
+
+    }
+
+    else{
+
+        alert("Error.");
+
+    }
+
+}
+
+</script>
 
 </body>
 
