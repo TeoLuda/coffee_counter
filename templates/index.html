@@ -217,12 +217,45 @@ Payment History
 
 <hr>
 
-<p class="text-muted">
+<table class="table table-sm">
 
-No payments yet.
+<thead>
 
-</p>
+<tr>
 
+<th>Date</th>
+
+<th>Name</th>
+
+<th>Coffees</th>
+
+<th>Amount</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+{% for payment in history|reverse %}
+
+<tr>
+
+<td>{{ payment.date[:10] }}</td>
+
+<td>{{ payment.name }}</td>
+
+<td>{{ payment.coffees }}</td>
+
+<td>€ {{ "%.2f"|format(payment.amount) }}</td>
+
+</tr>
+
+{% endfor %}
+
+</tbody>
+
+</table>
 </div>
 
 </div>

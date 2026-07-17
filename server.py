@@ -44,6 +44,26 @@ def save_pending(data):
     with open(PENDING_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+HISTORY_FILE = "payment_history.json"
+
+
+def load_history():
+
+    if not os.path.exists(HISTORY_FILE):
+        return []
+
+    try:
+        with open(HISTORY_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return []
+
+
+def save_history(history):
+
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history, f, indent=4)
+
 def send_payment_email(user, token):
 
     confirmation_link = f"{BASE_URL}/confirm/{token}"
@@ -202,9 +222,12 @@ def dashboard():
     for user in users:
         user["amount"] = round(user["coffee_count"] * COFFEE_PRICE, 2)
 
+    history = load_history()
+
     return render_template(
         "index.html",
         users=users,
+        history=history,
         coffee_price=COFFEE_PRICE,
         paypal_link="https://paypal.me/Teoluda"
     )
@@ -264,6 +287,133 @@ def coffee():
         "coffee_count": new_count
     })
     
+@app.route("/confirm/<token>")
+def confirm_payment(token):
+
+    pending = load_pending()
+
+    if token not in pending:
+        return """
+        <h2>Invalid or expired link.</h2>
+        """
+
+    payment = pending[token]
+
+    created = datetime.fromisoformat(payment["created_at"])
+
+    if datetime.utcnow() - created > timedelta(hours=TOKEN_EXPIRATION_HOURS):
+
+        del pending[token]
+        save_pending(pending)
+
+        return """
+        <h2>This confirmation link has expired.</h2>
+        """
+
+    user_id = payment["user_id"]
+
+    response = (
+        supabase
+        .table("users")
+        .select("*")
+        .eq("id", user_id)
+        .execute()
+    )
+
+    if len(response.data) == 0:
+        return "<h2>User not found.</h2>"
+
+    user = response.data[0]
+
+    history = load_history()
+
+    history.append({
+
+        "date": datetime.utcnow().isoformat(),
+
+        "name": user["name"],
+
+        "email": user["email"],
+
+        "coffees": user["coffee_count"],
+
+        "amount": round(user["coffee_count"] * COFFEE_PRICE, 2)
+
+    })
+
+    save_history(history)
+
+    supabase.table("users").update({
+
+        "coffee_count":0
+
+    }).eq("id", user_id).execute()
+
+    del pending[token]
+
+    save_pending(pending)
+
+    return f"""
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Payment confirmed</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+</head>
+
+<body style="background:#f5f5f5;">
+
+<div class="container">
+
+<div class="card mt-5 mx-auto" style="max-width:650px;border-radius:18px;">
+
+<div class="card-body text-center p-5">
+
+<h1>☕</h1>
+
+<h2>Payment confirmed!</h2>
+
+<br>
+
+<p>
+
+Thank you <b>{user["name"]}</b>.
+
+</p>
+
+<p>
+
+Your payment has been confirmed successfully.
+
+</p>
+
+<p>
+
+Your coffee counter has been reset to <b>0 coffees</b>.
+
+</p>
+
+<a href="/" class="btn btn-dark">
+
+Back to dashboard
+
+</a>
+
+</div>
+
+</div>
+
+</div>
+
+</body>
+
+</html>
+"""
+
 #if __name__ == "__main__":
 #    app.run(debug=True)
 
