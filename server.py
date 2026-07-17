@@ -32,8 +32,11 @@ def load_pending():
     if not os.path.exists(PENDING_FILE):
         return {}
 
-    with open(PENDING_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(PENDING_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return {}
 
 
 def save_pending(data):

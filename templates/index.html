@@ -252,21 +252,17 @@ async function requestPayment(id, name){
 
     const data = await response.json();
 
-    if(data.status=="ok"){
+    if (data.status == "ok") {
 
-        alert(
-            "Payment confirmation email sent!"
-        );
+        alert("Payment confirmation email sent!");
 
     }
-
-    if(data.status=="email_error"){
+    else if (data.status == "email_error") {
 
         alert("Unable to send email.");
 
     }
-
-    else{
+    else {
 
         alert("Error.");
 
